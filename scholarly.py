@@ -17,6 +17,8 @@ import re
 import requests
 import sys
 import time
+import numpy as np
+import matplotlib.pyplot as plt
 
 _GOOGLEID = hashlib.md5(str(random.random()).encode('utf-8')).hexdigest()[:16]
 _COOKIES = {'GSP': 'ID={0}:CF=4'.format(_GOOGLEID)}
@@ -224,7 +226,7 @@ class Author(object):
                 self.citedby = int(citedby.text[9:])
         self._filled = False
 
-    def fill(self):
+    def fill(self, populatePub=False):
         """Populate the Author with information from their profile"""
         url_citations = _CITATIONAUTH.format(self.id)
         soup = _get_soup('{0}&pagesize={1}'.format(url_citations, _PAGESIZE))
@@ -239,21 +241,62 @@ class Author(object):
         self.hindex5y = int(index[3].text)
         self.i10index = int(index[4].text)
         self.i10index5y = int(index[5].text)
+        # bar chart
+        citation_Years = soup.findAll('span', class_='gsc_g_t')
+        self.citation_years = []
+        print( len(citation_Years) )
+        for i in range(len(citation_Years)):
+            self.citation_years.append( int(citation_Years[i].text) )
+
+        no_citations = soup.findAll('span', class_='gsc_g_al')
+        print( len(no_citations) )
+        self.no_citations_per_year = []
+        for i in range(len(no_citations)):
+            self.no_citations_per_year.append( int(no_citations[i].text) )
         
         self.publications = list()
         pubstart = 0
-        while True:
-            for row in soup.findAll('tr', class_='gsc_a_tr'):
-                new_pub = Publication(row, 'citations')
-                self.publications.append(new_pub)
-            if 'disabled' not in soup.find('button', id='gsc_bpf_next').attrs:
-                pubstart += _PAGESIZE
-                soup = _get_soup('{0}&cstart={1}&pagesize={2}'.format(url_citations, pubstart, _PAGESIZE))
-            else:
-                break
+        if populatePub==True :
+            while True:
+                for row in soup.findAll('tr', class_='gsc_a_tr'):
+                    new_pub = Publication(row, 'citations')
+                    self.publications.append(new_pub)
+                if 'disabled' not in soup.find('button', id='gsc_bpf_next').attrs:
+                    pubstart += _PAGESIZE
+                    soup = _get_soup('{0}&cstart={1}&pagesize={2}'.format(url_citations, pubstart, _PAGESIZE))
+                else:
+                    break
         self._filled = True
         return self
 
+    def plotCitation(self):
+        if len(self.no_citations_per_year) != len( self.citation_years ) :
+            return
+        
+        tickfontsize = 15
+        labelfontsize=20
+        ind = np.arange(len(self.no_citations_per_year))  # the x locations for the groups
+        width = 0.35       # the width of the bars
+
+        fig, ax = plt.subplots()
+        rects1 = ax.bar(ind, np.array(self.no_citations_per_year), width, color='b', align='center', alpha=0.5)
+        # add some text for labels, title and axes ticks
+        ax.set_ylabel('Citations', fontsize=labelfontsize)
+        ax.set_xlabel('Year', fontsize=labelfontsize)
+        ax.set_title(self.name.title(), fontsize=labelfontsize)
+        ax.set_xticks(ind)
+        labels = [item.get_text() for item in ax.get_xticklabels()]
+        for i in range(len(labels)):
+            labels[i] = str( self.citation_years[i] )
+        ax.set_xticklabels(labels, fontsize=tickfontsize, rotation=70)
+        ax.tick_params(axis='y', labelsize=tickfontsize)
+        ax.xaxis.set_ticks_position("bottom")
+        ax.yaxis.set_ticks_position("left")
+        authorname = self.name
+        authorname = authorname.replace(" ", "")
+        authorname = authorname.lower()
+        filename = authorname + ".png"
+        plt.savefig(filename, dpi=300)
     def __str__(self):
         return pprint.pformat(self.__dict__)
 
